@@ -28,7 +28,7 @@ in terminal / command prompt.
 3. Input the coordinates into the variable `board_bbox` such as
    `board_bbox = (555, 200, 1276, 921)`
 
-4. Run the script and put your mouse on the left side of the screen (not top left or else it will trigger PyAutoGUI's FAIL SAFE)
+4. Run the script, go to lichess and put your mouse on the left side of the screen (not top left or else it will trigger PyAutoGUI's FAIL SAFE)
 
 ---
 
