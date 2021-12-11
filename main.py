@@ -22,13 +22,8 @@ I encourage the usage of this bot to play against another bot.
 '''
 
 # bounding area of the chess board (top left x, top left y, bottom right x, bottom right y)
-board_bbox = () #fill in the coordinates (top left x, top left y, bottom right x, bottom right y)
+board_bbox = ()
 length = round((board_bbox[2] - board_bbox[0])/8)
-# 442,924 flip board button
-
-#555,910, 850, 946
-
-# get the board position based on input
 
 piece_map = {
     'black_bishop': 'b',
@@ -54,14 +49,13 @@ for filename in glob('piece_templates/*.png'):
 
 def capture_image():
     img = ImageGrab.grab(bbox=board_bbox)
-    # img.save('board.png')
     img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
     return img
 
 
 def playing_color():
     image = ImageGrab.grab(bbox=[board_bbox[0], board_bbox[1] +
-                           length*7, board_bbox[0]+length, board_bbox[1]+length*8])
+                           length*6, board_bbox[0]+length, board_bbox[1]+length*7])
     image = np.array(image)
     white_pixels = np.count_nonzero((image >= [235, 235, 235]).all(axis=2))
 
@@ -69,6 +63,8 @@ def playing_color():
         return 'white'
     else:
         return 'black'
+
+# get the board position based on input image
 
 
 def check_grid_cells(image):
@@ -102,16 +98,16 @@ def check_grid_cells(image):
             string += '/'
     return string
 
-# move mouse to the left side of the screen to start
+# move mouse to the left side of the screen to start (not top left or else it will trigger FAIL SAFE)
 
 
 def waiting_to_start():
     while 1:
-        if ptg.position()[0] <= 20:
+        if ptg.position()[0] <= 10:
             break
     print('alright let\'s go')
 
-# main function (mainly logic for generating best move)
+# controls mouse to make move on board (lichess)
 
 
 def play_move(player_color, before, after, is_pawn):
@@ -148,6 +144,8 @@ def play_move(player_color, before, after, is_pawn):
         if is_pawn:
             ptg.click()
 
+# main logic
+
 
 async def main():
     transport, engine = await chess.engine.popen_uci("stockfish_14_x64_avx2.exe")
@@ -157,23 +155,25 @@ async def main():
 
     play_as = playing_color()
 
+    print(play_as)
+
     board_image = capture_image()
 
     ascii_board = check_grid_cells(board_image)
 
-    while ascii_board == 'RNBKQBNR/PPPPPPPP/8/8/8/8/pppppppp/rnbkqbnr':
+    while ascii_board == 'RNBKQBNR/PPPPPPPP/8/8/8/8/pppppppp/rnbkqbnr':  # waiting for white to make move first
         board_image = capture_image()
         ascii_board = check_grid_cells(board_image)
 
     ascii_board += f' {play_as[0]} KQkq'
 
     board = chess.Board(ascii_board)
-    if play_as == 'black':
+    if play_as == 'black':  # flip perspective when playing as black
         board.apply_transform(chess.flip_vertical)
         board.apply_transform(chess.flip_horizontal)
 
     while not board.is_game_over():
-        result = await engine.play(board, chess.engine.Limit(depth=20))
+        result = await engine.play(board, chess.engine.Limit(depth=18))
         ai_move = str(result.move)
 
         before_pos = ai_move[:2]
@@ -186,17 +186,27 @@ async def main():
         play_move(play_as, before_pos, after_pos, is_pawn)
 
         board.push(result.move)
-        original_board = str(board)
-
-        time.sleep(2)
+        board_copy = board
+        if play_as == 'black':
+            board_copy.apply_transform(chess.flip_vertical)
+            board_copy.apply_transform(chess.flip_horizontal)
+        original_board = str(board_copy)
+        # time.sleep(2)
 
         board_image = capture_image()
         ascii_board = check_grid_cells(board_image)
         ascii_board += f' {play_as[0]} KQkq'
 
+        # waiting for opponent to make move
         while str(chess.Board(ascii_board)) == original_board:
             board_image = capture_image()
             ascii_board = check_grid_cells(board_image)
+            ascii_board += f' {play_as[0]} KQkq'
+        print(str(chess.Board(ascii_board)))
+        print()
+        print(original_board)
+        print()
+
         board = chess.Board(ascii_board)
         if play_as == 'black':
             board.apply_transform(chess.flip_vertical)
@@ -205,13 +215,4 @@ async def main():
 
 if __name__ == '__main__':
     asyncio.set_event_loop_policy(chess.engine.EventLoopPolicy())
-    # try:
     asyncio.run(main())
-    # except:
-    #     ptg.click(1640, 560)
-    #     ptg.click(1640, 560)
-    #     ptg.click(1560, 600)
-
-    #     ptg.moveTo(0, 200)
-
-    #     subprocess.call(['python', 'lichess_main.py'])

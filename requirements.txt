@@ -1,0 +1,5 @@
+chess==1.6.1
+PyAutoGUI>=0.9.52
+numpy>=1.19.5
+opencv_python>=4.5.3.56
+Pillow>=8.4.0
