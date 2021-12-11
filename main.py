@@ -22,7 +22,7 @@ I encourage the usage of this bot to play against another bot.
 '''
 
 # bounding area of the chess board (top left x, top left y, bottom right x, bottom right y)
-board_bbox = (555, 200, 1276, 921)
+board_bbox = () #fill in the coordinates (top left x, top left y, bottom right x, bottom right y)
 length = round((board_bbox[2] - board_bbox[0])/8)
 # 442,924 flip board button
 
