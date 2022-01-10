@@ -211,6 +211,7 @@ async def main():
         if play_as == 'black':
             board.apply_transform(chess.flip_vertical)
             board.apply_transform(chess.flip_horizontal)
+    await engine.quit()
 
 
 if __name__ == '__main__':
