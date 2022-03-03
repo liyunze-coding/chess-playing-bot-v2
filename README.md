@@ -1,4 +1,4 @@
-# chess puzzle solving bot
+# Chess bot using OpenCV
 
 ### version 2.0
 
@@ -32,8 +32,16 @@ in terminal / command prompt.
 
 ---
 
+## How it works
+
+This program uses `OpenCV` 's template matching feature. It looks at individual chess pieces from right to left each row, starting from the top left.
+
+When it views an unknown chess piece, it takes confidence value of each template and take the template with the highest confidence value, telling us what chess piece it is.
+
+---
+
 ## License & copyright
 
-© Ryan Lee In Zer, student
+© liyunze-coding, student
 
 Licensed under the [MIT License](LICENSE).
