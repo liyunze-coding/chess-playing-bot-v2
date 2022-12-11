@@ -1,11 +1,11 @@
 import cv2
 import numpy as np
-from PIL import ImageGrab
 import time
 import pyautogui as ptg
 import chess
 import chess.engine
 import asyncio
+from mss import mss
 from glob import glob
 
 '''
@@ -22,8 +22,18 @@ I encourage the usage of this bot to play against another bot.
 '''
 
 # bounding area of the chess board (top left x, top left y, bottom right x, bottom right y)
-board_bbox = ()
-length = round((board_bbox[2] - board_bbox[0])/8)
+#577, 200, 1250, 873
+#(555, 200, 1276, 921)
+board_bbox = (537, 180, 1322, 965)
+length = int((board_bbox[2] - board_bbox[0])/8) 
+sct = mss()
+
+'''
+black pieces = lowercase
+white pieces = uppercase
+
+(according to chess library)
+'''
 
 piece_map = {
     'black_bishop': 'b',
@@ -40,24 +50,27 @@ piece_map = {
     'white_rook': 'R'
 }
 
+# append piece images along with piece name
 chess_piece_templates = []
 for filename in glob('piece_templates/*.png'):
     piece_name = filename[16:-6]
     chess_piece_templates.append(
         [piece_name, cv2.imread(filename, 0)])
 
-
+# capture the part of the screen (predefined) where there is a chess
 def capture_image():
-    img = ImageGrab.grab(bbox=board_bbox)
+    img = sct.grab(monitor=board_bbox)
     img = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
     return img
 
-
+# determine which colour you are playing as
 def playing_color():
-    image = ImageGrab.grab(bbox=[board_bbox[0], board_bbox[1] +
-                           length*6, board_bbox[0]+length, board_bbox[1]+length*7])
-    image = np.array(image)
-    white_pixels = np.count_nonzero((image >= [235, 235, 235]).all(axis=2))
+    # image -> turn gray -> set threshold for white color -> count how many white pixels
+    image = sct.grab(monitor=(board_bbox[0], board_bbox[1] +
+                           length*6, board_bbox[0]+length, board_bbox[1]+length*7))
+    image = cv2.cvtColor(np.array(image),cv2.COLOR_BGR2GRAY)
+    ret,thresh=cv2.threshold(image,235,255,cv2.THRESH_BINARY)
+    white_pixels = np.count_nonzero(thresh)
 
     if white_pixels > 500:
         return 'white'
@@ -65,26 +78,28 @@ def playing_color():
         return 'black'
 
 # get the board position based on input image
-
-
 def check_grid_cells(image):
-    length = round((board_bbox[2] - board_bbox[0]) / 8)
-
     string = ''
+    # check each individual box on 8 x 8 chess board
     for y in range(8):
         blank_count = 0
         for x in range(8):
             confirm_chess_piece = ''
             cropped = image[y*length:y*length+length, x*length:x*length+length]
 
+            highest_confidence = 0
+
             for chess_piece, template in chess_piece_templates:
-                res = cv2.matchTemplate(
-                    cropped, template, cv2.TM_CCOEFF_NORMED)
-                threshold = 0.95
-                loc = np.where(res >= threshold)
-                if len(list(zip(*loc[::-1]))) >= 1:
+                res = cv2.matchTemplate(cropped, template, cv2.TM_CCOEFF_NORMED)
+
+                confidence = cv2.minMaxLoc(res)[1] #finding the confidence
+
+                # make most confident piece as the final confirmed piece
+                if confidence > highest_confidence:
+                    highest_confidence = confidence 
                     confirm_chess_piece = chess_piece
-            if confirm_chess_piece == '':
+            
+            if highest_confidence < 0.4:
                 blank_count += 1
             else:
                 if blank_count >= 1:
@@ -99,8 +114,6 @@ def check_grid_cells(image):
     return string
 
 # move mouse to the left side of the screen to start (not top left or else it will trigger FAIL SAFE)
-
-
 def waiting_to_start():
     while 1:
         if ptg.position()[0] <= 10:
@@ -108,10 +121,7 @@ def waiting_to_start():
     print('alright let\'s go')
 
 # controls mouse to make move on board (lichess)
-
-
 def play_move(player_color, before, after, is_pawn):
-    length = round((board_bbox[2] - board_bbox[0]) / 8)
     before_column = before[0]
     before_row = before[1]
 
@@ -145,7 +155,9 @@ def play_move(player_color, before, after, is_pawn):
             ptg.click()
 
 # main logic
-
+width = int(board_bbox[2]-board_bbox[0]) #set width
+height = int(board_bbox[3]-board_bbox[1]) #set height
+# writer= cv2.VideoWriter('basicvideo.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 20, (785,785))
 
 async def main():
     transport, engine = await chess.engine.popen_uci("stockfish_14_x64_avx2.exe")
@@ -154,64 +166,87 @@ async def main():
     waiting_to_start()
 
     play_as = playing_color()
+    play_as = 'white'
 
     print(play_as)
 
     board_image = capture_image()
 
+    # cv2.imwrite('board.png', board_image)
+
+    # generate the board into chess library readable format
     ascii_board = check_grid_cells(board_image)
 
     while ascii_board == 'RNBKQBNR/PPPPPPPP/8/8/8/8/pppppppp/rnbkqbnr':  # waiting for white to make move first
         board_image = capture_image()
         ascii_board = check_grid_cells(board_image)
 
+    # to make it readable for chess library
     ascii_board += f' {play_as[0]} KQkq'
-
     board = chess.Board(ascii_board)
+
+    print(board)
+
     if play_as == 'black':  # flip perspective when playing as black
         board.apply_transform(chess.flip_vertical)
         board.apply_transform(chess.flip_horizontal)
 
     while not board.is_game_over():
-        result = await engine.play(board, chess.engine.Limit(depth=18))
-        ai_move = str(result.move)
+        try:
+            # result = await engine.play(board, chess.engine.Limit(depth=18))
+            result = await engine.play(board, chess.engine.Limit(time=0.05))
+            ai_move = str(result.move) # extract the move in string format
 
-        before_pos = ai_move[:2]
-        after_pos = ai_move[2:]
+            before_pos = ai_move[:2]
+            after_pos = ai_move[2:]
 
-        before_piece = board.piece_at(chess.parse_square(before_pos))
+            # check if piece is pawn, for promotion
+            # promoting pawns should be dragged and clicked to promote
+            # normal pieces would only be dragged
+            before_piece = board.piece_at(chess.parse_square(before_pos))
+            is_pawn = str(before_piece).lower() == 'p'
 
-        is_pawn = str(before_piece).lower() == 'p'
+            play_move(play_as, before_pos, after_pos, is_pawn)
 
-        play_move(play_as, before_pos, after_pos, is_pawn)
+            board.push(result.move)
+            board_copy = board # create copy to identify if opponent made a move
 
-        board.push(result.move)
-        board_copy = board
-        if play_as == 'black':
-            board_copy.apply_transform(chess.flip_vertical)
-            board_copy.apply_transform(chess.flip_horizontal)
-        original_board = str(board_copy)
-        # time.sleep(2)
+            # if black, flip the board so coordinates line up correctly
+            if play_as == 'black':
+                board_copy.apply_transform(chess.flip_vertical)
+                board_copy.apply_transform(chess.flip_horizontal)
 
-        board_image = capture_image()
-        ascii_board = check_grid_cells(board_image)
-        ascii_board += f' {play_as[0]} KQkq'
+            original_board = str(board_copy)
+            # time.sleep(2)
 
-        # waiting for opponent to make move
-        while str(chess.Board(ascii_board)) == original_board:
             board_image = capture_image()
+
             ascii_board = check_grid_cells(board_image)
             ascii_board += f' {play_as[0]} KQkq'
-        print(str(chess.Board(ascii_board)))
-        print()
-        print(original_board)
-        print()
 
-        board = chess.Board(ascii_board)
-        if play_as == 'black':
-            board.apply_transform(chess.flip_vertical)
-            board.apply_transform(chess.flip_horizontal)
+            if board.is_game_over(): #if game is over, break
+                break
+
+            # waiting for opponent to make move
+            while str(chess.Board(ascii_board)) == original_board:
+                board_image = capture_image()
+                
+                ascii_board = check_grid_cells(board_image)
+                ascii_board += f' {play_as[0]} KQkq'
+            print(str(chess.Board(ascii_board)))
+            print()
+            print(original_board)
+            print()
+
+            board = chess.Board(ascii_board)
+            if play_as == 'black':
+                board.apply_transform(chess.flip_vertical)
+                board.apply_transform(chess.flip_horizontal)
+        except Exception as e:
+            print(e)
+            break
     await engine.quit()
+    # writer.release()
 
 
 if __name__ == '__main__':
