@@ -22,9 +22,7 @@ I encourage the usage of this bot to play against another bot.
 '''
 
 # bounding area of the chess board (top left x, top left y, bottom right x, bottom right y)
-#577, 200, 1250, 873
-#(555, 200, 1276, 921)
-board_bbox = (537, 180, 1322, 965)
+board_bbox = ()#BBOX GO HERE
 length = int((board_bbox[2] - board_bbox[0])/8) 
 sct = mss()
 
